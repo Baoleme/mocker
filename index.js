@@ -1,25 +1,73 @@
 const { promisify } = require('util');
 const parse = promisify(require('csv-parse'));
-const { readFile } = require('fs-extra');
+const { readFile, writeJson } = require('fs-extra');
 const { zipObject } = require('lodash');
-// const FormData = require('form-data');
+const FormData = require('form-data');
 
 const logger = require('./lib/logger');
+const ax = require('./lib/ax');
 
 (async () => {
+  logger.info('reading mock data...');
   const data = await readData();
-  // console.log(data.map(projectRestaurant));
+  // await writeJson('./data.json', data, { spaces: 2 });
+  logger.info(`read ${data.length} restaurants`);
+
+  for (const restaurant of data) {
+    await mock(restaurant);
+  }
+  logger.info('done');
 })()
-  .catch(err => logger.error(err));
+  .catch(err => {
+    if (err.response && err.response.data) {
+      logger.error(`code: ${err.response.status}`);
+      logger.error(err.response.data);
+    } else {
+      logger.error(err.message);
+    }
+  });
+
+async function mock (r) {
+  logger.info(`start mocking ${r.name}`);
+  await regist(r);
+  logger.info(`${r.name}: regist done`);
+
+  await ax.post('/restaurant/session', { email: r.email, password: r.password }); // login
+  logger.info(`${r.name}: logged in`);
+
+  logger.info(`${r.name}: start mocking categories. total ${r.products.length}`);
+  for (const cate of r.products) {
+    const { data: { category_id } } = await ax.post('/category', { name: cate.category });
+    logger.info(`${r.name}: category - ${cate.category} created`);
+    logger.info(`${r.name}: category - ${cate.category} mocking dishes. total ${cate.products.length}`);
+    for (const dish of cate.products) {
+      await ax.post('/dish', { ...dish, category_id });
+      logger.info(`${r.name}: category - ${cate.category} - ${dish.name} created`);
+    }
+  }
+  ax.delete('/restaurant/session'); // logout
+  logger.info(`${r.name}: logged out, done`);
+}
+
+async function regist (r) { // r: restaurant
+  const form = new FormData();
+  form.append('email', r.email);
+  form.append('password', r.password);
+  form.append('name', r.name);
+  form.append('license', '123', 'a.docx');
+  return ax.post('/restaurant', form, {
+    headers: form.getHeaders()
+  });
+}
 
 function projectRestaurant (o) {
   return {
-    name: o.name,
+    name: normalize(o.name),
     email: `${o.sid}@zyuco.com`,
-    password: `${o.sid}`,
+    password: `${o.sid}`.padStart(6, '0'),
     license: 'mockLicence.pdf',
     products: o.products.map(({ category, products }) => ({
-      category,
+      category: normalize(category),
       products: products.map(projectDish)
     }))
   };
@@ -27,10 +75,10 @@ function projectRestaurant (o) {
 
 function projectDish (o) {
   const dish = {
-    name: o.name,
-    description: o.desc,
-    image_url: o.images,
-    tag: []
+    name: normalize(o.name),
+    description: normalize(o.desc) || '神tm描述不能为空',
+    image_url: o.images.length ? o.images : ['神tm图片也不能为空']
+    // tag: []
   };
   // dish.origin = o;
   const spec = o.sku_detail;
@@ -44,7 +92,7 @@ function projectDish (o) {
       require: true,
       default: 0,
       options: spec.map(p => ({
-        name: p.sku.replace(dish.name, '').trim(),
+        name: normalize(p.sku.replace(dish.name, '')),
         delta: Number(p.price) - dish.price
       }))
     }];
@@ -65,6 +113,10 @@ function tryParse (str) {
   } catch (err) {
     return str;
   }
+}
+
+function normalize (str) {
+  return str.trim().replace(/\s+/g, '');
 }
 
 module.exports = readData;
