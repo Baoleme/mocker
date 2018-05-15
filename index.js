@@ -76,8 +76,8 @@ function projectRestaurant (o) {
 function projectDish (o) {
   const dish = {
     name: normalize(o.name),
-    description: normalize(o.desc) || '神tm描述不能为空',
-    image_url: o.images.length ? o.images : ['神tm图片也不能为空']
+    description: normalize(o.desc) || null,
+    image_url: o.images.length ? o.images : null
     // tag: []
   };
   // dish.origin = o;
