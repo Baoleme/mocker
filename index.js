@@ -35,6 +35,9 @@ async function mock (r) {
   await ax.post('/restaurant/session', { email: r.email, password: r.password }); // login
   logger.info(`${r.name}: logged in`);
 
+  await ax.put('/restaurant/self', { logo_url: r.logo });
+  logger.info(`${r.name}: logo updated`);
+
   logger.info(`${r.name}: start mocking categories. total ${r.products.length}`);
   for (const cate of r.products) {
     const { data: { category_id } } = await ax.post('/category', { name: cate.category });
@@ -69,7 +72,8 @@ function projectRestaurant (o) {
     products: o.products.map(({ category, products }) => ({
       category: normalize(category),
       products: products.map(projectDish)
-    }))
+    })),
+    logo: o.logo
   };
 }
 
